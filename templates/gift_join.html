@@ -4,35 +4,51 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card fade-in">
             <div class="card-header">
-                <h2 class="text-center">{{ gift.name }}</h2>
+                <h2 class="text-center h4 mb-0">{{ gift.name }}</h2>
             </div>
             <div class="card-body">
                 {% if gift.status == 'open' %}
                 {% if participant %}
-                <div class="alert alert-success">
-                    <h4>¡Ya estás participando!</h4>
-                    <p>Tu nombre: {{ participant.name }}</p>
+                <div class="alert alert-success d-flex align-items-center">
+                    <i class="bi bi-check-circle-fill me-2"></i>
+                    <div>
+                        <h4 class="h5 mb-1">¡Ya estás participando!</h4>
+                        <p class="mb-0">Tu nombre: {{ participant.name }}</p>
+                    </div>
                 </div>
                 {% else %}
                 <form id="join-form" action="{{ url_for('join_gift', gift_id=gift.id) }}" method="post">
                     <div class="mb-3">
-                        <label for="name" class="form-label">Tu Nombre</label>
-                        <input type="text" class="form-control" id="name" name="name" required>
+                        <label for="name" class="form-label">
+                            <i class="bi bi-person me-1"></i>
+                            Tu Nombre
+                        </label>
+                        <input type="text" class="form-control form-control-lg" id="name" name="name" required
+                            autocomplete="name" placeholder="Escribe tu nombre">
                     </div>
-                    <button type="submit" id="submit-btn" class="btn btn-primary w-100">Unirme al Sorteo</button>
+                    <button type="submit" id="submit-btn" class="btn btn-primary btn-lg w-100">
+                        <i class="bi bi-box-arrow-in-right me-2"></i>
+                        Unirme al Sorteo
+                    </button>
                 </form>
                 {% endif %}
 
-                <hr>
+                <hr class="my-4">
 
                 <div id="participants-section">
-                    <h4>Participantes actuales:</h4>
-                    <ul class="list-group" id="participants-list">
+                    <h4 class="h5 d-flex align-items-center mb-3">
+                        <i class="bi bi-people-fill me-2"></i>
+                        Participantes actuales
+                    </h4>
+                    <ul class="list-group list-group-flush" id="participants-list">
                         {% for p in gift.participants %}
-                        <li class="list-group-item">{{ p.name }}</li>
+                        <li class="list-group-item d-flex align-items-center">
+                            <i class="bi bi-person-circle me-2"></i>
+                            {{ p.name }}
+                        </li>
                         {% endfor %}
                     </ul>
 
@@ -41,22 +57,31 @@
                         <form id="close-form" action="{{ url_for('close_gift', gift_id=gift.id) }}" method="post">
                             <button type="submit" class="btn btn-warning w-100" {% if gift.participants|length < 2
                                 %}disabled{% endif %}>
+                                <i class="bi bi-lock-fill me-2"></i>
                                 Cerrar Sorteo y Realizar Asignaciones
                             </button>
                         </form>
-                        {% if gift.participants|length < 2 %} <small class="text-muted">Se necesitan al menos 2
-                            participantes para cerrar el sorteo.</small>
+                        {% if gift.participants|length < 2 %} <small class="text-muted d-flex align-items-center mt-2">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Se necesitan al menos 2 participantes para cerrar el sorteo.
+                            </small>
                             {% endif %}
                     </div>
                     {% endif %}
                 </div>
                 {% else %}
-                <div class="alert alert-info">
-                    Este sorteo ya está cerrado. Las asignaciones han sido realizadas.
-                    {% if participant %}
-                    <a href="{{ url_for('view_gift', gift_id=gift.id) }}" class="btn btn-primary mt-3">Ver mi
-                        asignación</a>
-                    {% endif %}
+                <div class="alert alert-info d-flex align-items-center">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    <div>
+                        <h4 class="h5 mb-2">Este sorteo ya está cerrado</h4>
+                        <p class="mb-0">Las asignaciones han sido realizadas.</p>
+                        {% if participant %}
+                        <a href="{{ url_for('view_gift', gift_id=gift.id) }}" class="btn btn-primary w-100 mt-3">
+                            <i class="bi bi-eye-fill me-2"></i>
+                            Ver mi asignación
+                        </a>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endif %}
             </div>
@@ -65,6 +90,36 @@
 </div>
 
 <script>
+    function updateParticipantsList() {
+        fetch('{{ url_for("get_participants", gift_id=gift.id) }}')
+            .then(response => response.json())
+            .then(participants => {
+                const list = document.getElementById('participants-list');
+                if (list) {
+                    list.innerHTML = participants
+                        .map(p => `
+                        <li class="list-group-item d-flex align-items-center fade-in">
+                            <i class="bi bi-person-circle me-2"></i>
+                            ${p.name}
+                        </li>
+                    `)
+                        .join('');
+
+                    const closeButton = document.querySelector('#close-form button[type="submit"]');
+                    if (closeButton) {
+                        const canClose = participants.length >= 2;
+                        closeButton.disabled = !canClose;
+
+                        const helpText = document.querySelector('small.text-muted');
+                        if (helpText) {
+                            helpText.style.display = canClose ? 'none' : 'block';
+                        }
+                    }
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
     function checkGiftStatus() {
         fetch('{{ url_for("get_gift_status", gift_id=gift.id) }}')
             .then(response => response.json())
@@ -78,38 +133,9 @@
             .catch(error => console.error('Error:', error));
     }
 
-    function updateParticipantsList() {
-        fetch('{{ url_for("get_participants", gift_id=gift.id) }}')
-            .then(response => response.json())
-            .then(participants => {
-                const list = document.getElementById('participants-list');
-                if (list) {
-                    list.innerHTML = participants
-                        .map(p => `<li class="list-group-item">${p.name}</li>`)
-                        .join('');
-
-                    // Actualizar el estado del botón de cerrar sorteo si es el organizador
-                    const closeButton = document.querySelector('#close-form button[type="submit"]');
-                    if (closeButton) {
-                        const canClose = participants.length >= 2;
-                        closeButton.disabled = !canClose;
-
-                        // Actualizar el mensaje de ayuda
-                        const helpText = document.querySelector('small.text-muted');
-                        if (helpText) {
-                            helpText.style.display = canClose ? 'none' : 'block';
-                        }
-                    }
-                }
-            })
-            .catch(error => console.error('Error:', error));
-    }
-
-    // Actualizar cada 5 segundos
     setInterval(checkGiftStatus, 5000);
 
     {% if not participant and gift.status == 'open' %}
-    // Código del formulario de unión
     const form = document.getElementById('join-form');
     if (form) {
         const submitBtn = document.getElementById('submit-btn');
@@ -118,7 +144,8 @@
             e.preventDefault();
 
             submitBtn.disabled = true;
-            submitBtn.innerHTML = 'Procesando...';
+            const originalContent = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<div class="spinner"></div>';
 
             const formData = new FormData(this);
 
@@ -141,7 +168,7 @@
                 .catch(error => {
                     console.error('Error:', error);
                     submitBtn.disabled = false;
-                    submitBtn.innerHTML = 'Unirme al Sorteo';
+                    submitBtn.innerHTML = originalContent;
                     alert('Error al unirse al sorteo: ' + error.message);
                 });
         });
