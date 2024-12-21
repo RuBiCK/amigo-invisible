@@ -4,58 +4,148 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8">
+    <div class="col-md-6">
         <div class="card">
             <div class="card-header">
                 <h2 class="text-center">{{ gift.name }}</h2>
             </div>
             <div class="card-body">
                 {% if gift.status == 'open' %}
-                    {% if participant %}
-                        <div class="alert alert-success">
-                            <h4>¡Ya estás participando!</h4>
-                            <p>Tu nombre: {{ participant.name }}</p>
-                        </div>
-                    {% else %}
-                        <form action="{{ url_for('join_gift', gift_id=gift.id) }}" method="post">
-                            <div class="mb-3">
-                                <label for="name" class="form-label">Tu Nombre</label>
-                                <input type="text" class="form-control" id="name" name="name" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100">Unirme al Sorteo</button>
-                        </form>
-                    {% endif %}
+                {% if participant %}
+                <div class="alert alert-success">
+                    <h4>¡Ya estás participando!</h4>
+                    <p>Tu nombre: {{ participant.name }}</p>
+                </div>
+                {% else %}
+                <form id="join-form" action="{{ url_for('join_gift', gift_id=gift.id) }}" method="post">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Tu Nombre</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <button type="submit" id="submit-btn" class="btn btn-primary w-100">Unirme al Sorteo</button>
+                </form>
+                {% endif %}
 
-                    <hr>
-                    
+                <hr>
+
+                <div id="participants-section">
                     <h4>Participantes actuales:</h4>
-                    <ul class="list-group">
+                    <ul class="list-group" id="participants-list">
                         {% for p in gift.participants %}
-                            <li class="list-group-item">{{ p.name }}</li>
+                        <li class="list-group-item">{{ p.name }}</li>
                         {% endfor %}
                     </ul>
 
                     {% if is_owner %}
-                        <div class="mt-4">
-                            <form action="{{ url_for('close_gift', gift_id=gift.id) }}" method="post">
-                                <button type="submit" class="btn btn-warning w-100" 
-                                        {% if gift.participants|length < 2 %}disabled{% endif %}>
-                                    Cerrar Sorteo y Realizar Asignaciones
-                                </button>
-                            </form>
-                            {% if gift.participants|length < 2 %}
-                                <small class="text-muted">Se necesitan al menos 2 participantes para cerrar el sorteo.</small>
+                    <div class="mt-4">
+                        <form id="close-form" action="{{ url_for('close_gift', gift_id=gift.id) }}" method="post">
+                            <button type="submit" class="btn btn-warning w-100" {% if gift.participants|length < 2
+                                %}disabled{% endif %}>
+                                Cerrar Sorteo y Realizar Asignaciones
+                            </button>
+                        </form>
+                        {% if gift.participants|length < 2 %} <small class="text-muted">Se necesitan al menos 2
+                            participantes para cerrar el sorteo.</small>
                             {% endif %}
-                        </div>
-                    {% endif %}
-
-                {% else %}
-                    <div class="alert alert-info">
-                        Este sorteo ya está cerrado. Las asignaciones han sido realizadas.
                     </div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    Este sorteo ya está cerrado. Las asignaciones han sido realizadas.
+                    {% if participant %}
+                    <a href="{{ url_for('view_gift', gift_id=gift.id) }}" class="btn btn-primary mt-3">Ver mi
+                        asignación</a>
+                    {% endif %}
+                </div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
+
+<script>
+    function checkGiftStatus() {
+        fetch('{{ url_for("get_gift_status", gift_id=gift.id) }}')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'closed') {
+                    window.location.reload();
+                } else {
+                    updateParticipantsList();
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
+    function updateParticipantsList() {
+        fetch('{{ url_for("get_participants", gift_id=gift.id) }}')
+            .then(response => response.json())
+            .then(participants => {
+                const list = document.getElementById('participants-list');
+                if (list) {
+                    list.innerHTML = participants
+                        .map(p => `<li class="list-group-item">${p.name}</li>`)
+                        .join('');
+
+                    // Actualizar el estado del botón de cerrar sorteo si es el organizador
+                    const closeButton = document.querySelector('#close-form button[type="submit"]');
+                    if (closeButton) {
+                        const canClose = participants.length >= 2;
+                        closeButton.disabled = !canClose;
+
+                        // Actualizar el mensaje de ayuda
+                        const helpText = document.querySelector('small.text-muted');
+                        if (helpText) {
+                            helpText.style.display = canClose ? 'none' : 'block';
+                        }
+                    }
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
+    // Actualizar cada 5 segundos
+    setInterval(checkGiftStatus, 5000);
+
+    {% if not participant and gift.status == 'open' %}
+    // Código del formulario de unión
+    const form = document.getElementById('join-form');
+    if (form) {
+        const submitBtn = document.getElementById('submit-btn');
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = 'Procesando...';
+
+            const formData = new FormData(this);
+
+            fetch(this.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        throw new Error(data.error || 'Error al unirse al sorteo');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = 'Unirme al Sorteo';
+                    alert('Error al unirse al sorteo: ' + error.message);
+                });
+        });
+    }
+    {% endif %}
+</script>
 {% endblock %}

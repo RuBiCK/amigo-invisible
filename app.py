@@ -45,6 +45,20 @@ def generate_qr(url):
     img.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode()
 
+@app.route('/gifts/<gift_id>/status', methods=['GET'])
+def get_gift_status(gift_id):
+    gift = Gift.query.get_or_404(gift_id)
+    return jsonify({
+        'status': gift.status,
+        'total_participants': len(gift.participants)
+    })
+
+@app.route('/gifts/<gift_id>/participants', methods=['GET'])
+def get_participants(gift_id):
+    gift = Gift.query.get_or_404(gift_id)
+    participants = [{'name': p.name} for p in gift.participants]
+    return jsonify(participants)
+
 def assign_gifts(participants):
     givers = participants.copy()
     receivers = participants.copy()
@@ -109,31 +123,64 @@ def view_gift(gift_id):
 
 @app.route('/gifts/<gift_id>/join', methods=['POST'])
 def join_gift(gift_id):
-    if 'session_id' not in session:
-        session['session_id'] = str(uuid.uuid4())
-    
-    gift = Gift.query.get_or_404(gift_id)
-    
-    if gift.status != 'open':
-        return redirect(url_for('view_gift', gift_id=gift_id))
-    
-    # Verificar si ya está participando
-    existing = Participant.query.filter_by(
-        gift_id=gift_id,
-        session_id=session['session_id']
-    ).first()
-    
-    if not existing:
+    try:
+        app.logger.info(f"Intento de unirse al sorteo {gift_id}")
+        app.logger.info(f"Headers recibidos: {dict(request.headers)}")
+        app.logger.info(f"Datos del formulario: {dict(request.form)}")
+        
+        if 'session_id' not in session:
+            session['session_id'] = str(uuid.uuid4())
+            app.logger.info(f"Nueva session_id creada: {session['session_id']}")
+        else:
+            app.logger.info(f"Session_id existente: {session['session_id']}")
+        
+        gift = Gift.query.get_or_404(gift_id)
+        app.logger.info(f"Sorteo encontrado: {gift.name}")
+        
+        if gift.status != 'open':
+            app.logger.warning(f"Intento de unirse a sorteo cerrado: {gift_id}")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': 'El sorteo ya está cerrado'}), 400
+            return redirect(url_for('view_gift', gift_id=gift_id))
+        
+        # Verificar si ya está participando
+        existing = Participant.query.filter_by(
+            gift_id=gift_id,
+            session_id=session['session_id']
+        ).first()
+        
+        if existing:
+            app.logger.info(f"Participante ya existe: {existing.name}")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': True, 'message': 'Ya estás participando'})
+            return redirect(url_for('view_gift', gift_id=gift_id))
+        
+        name = request.form.get('name')
+        if not name:
+            app.logger.error("No se recibió nombre en el formulario")
+            return jsonify({'error': 'El nombre es requerido'}), 400
+        
         participant = Participant(
             id=str(uuid.uuid4()),
             gift_id=gift_id,
-            name=request.form['name'],
+            name=name,
             session_id=session['session_id']
         )
         db.session.add(participant)
         db.session.commit()
-    
-    return redirect(url_for('view_gift', gift_id=gift_id))
+        app.logger.info(f"Nuevo participante añadido: {name}")
+        
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': 'Te has unido al sorteo correctamente'})
+        return redirect(url_for('view_gift', gift_id=gift_id))
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error en join_gift: {str(e)}")
+        app.logger.exception("Stacktrace completo:")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': str(e)}), 500
+        return redirect(url_for('view_gift', gift_id=gift_id))
 
 @app.route('/gifts/<gift_id>/close', methods=['POST'])
 def close_gift(gift_id):
